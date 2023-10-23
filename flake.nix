@@ -45,7 +45,8 @@
           commonArgs = {
             inherit src;
             strictDeps = true;
-            buildInputs = [ ];
+            buildInputs = with pkgs; [ openssl ];
+            nativeBuildInputs = with pkgs; [ pkg-config ];
           };
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
           kupli-crate = craneLib.buildPackage (commonArgs // {
