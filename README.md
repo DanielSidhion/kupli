@@ -1,3 +1,5 @@
+**Note**: this project is absolutely, completely experimental at this point. Contact me if the idea of it interests you (by reading the description below), otherwise just move along until it matures more.
+
 Track information across your repository. Ensure it never goes stale.
 
 `kupli` is able to track information links in your repository, and can either alert you when information might be out of date, or automatically fix things if it's configured to do so.
