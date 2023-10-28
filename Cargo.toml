@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 git2 = { version = "0.18.1", features = ["vendored-libgit2"] }
+uuid = { version = "1.5", features = ["v7"] }

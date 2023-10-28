@@ -1,10 +1,17 @@
-**Note**: this project is absolutely, completely experimental at this point. Contact me if the idea of it interests you (by reading the description below), otherwise just move along until it matures more.
+**Note**: this project is absolutely, completely experimental at this point. This README is aspirational for now, listing certain solutions I want this project to provide. Contact me if the idea of it interests you (by reading the description below), otherwise just move along until it matures more.
 
 Track information across your repository. Ensure it never goes stale.
 
 `kupli` is able to track information links in your repository, and can either alert you when information might be out of date, or automatically fix things if it's configured to do so.
 You register links by detailing what piece of information is linked to another,
 and `kupli` checks those links are still valid on every commit.
+
+What can be a piece of information:
+
+- An entire file.
+- A continuous part of a file (line X, column Y, to line U, column V).
+- The output of a command running on the repository.
+- And more (with plugins).
 
 # Use cases
 

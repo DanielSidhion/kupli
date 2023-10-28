@@ -47,6 +47,7 @@
             strictDeps = true;
             buildInputs = with pkgs; [ openssl ];
             nativeBuildInputs = with pkgs; [ pkg-config ];
+            CARGO_BUILD_RUSTFLAGS = "--cfg uuid_unstable";
           };
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
           kupli-crate = craneLib.buildPackage (commonArgs // {

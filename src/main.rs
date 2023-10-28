@@ -1,5 +1,6 @@
 use git2::{ObjectType, Oid, Repository, TreeWalkResult};
 use std::path::Path;
+use uuid::Uuid;
 
 #[derive(Debug)]
 enum Object {
@@ -72,19 +73,24 @@ impl Object {
 }
 
 #[derive(Debug)]
-struct Link(Object, Object);
+struct Link(Uuid, Object, Object);
 
 impl ::std::str::FromStr for Link {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut string_items = s.split(' ');
+        let id = match string_items.next() {
+            None => return Err("tried to parse a link from an empty line!".into()),
+            Some(id) => Uuid::parse_str(id)
+                .map_err(|err| format!("failed to parse uuid for link, error: {}", err))?,
+        };
         let obj1 = Object::from_str_iter_mut(&mut string_items)?;
         let obj2 = Object::from_str_iter_mut(&mut string_items)?;
 
         // TODO: read any flags here.
 
-        Ok(Link(obj1, obj2))
+        Ok(Link(id, obj1, obj2))
     }
 }
 
@@ -157,21 +163,6 @@ fn main() {
         tree.walk(git2::TreeWalkMode::PreOrder, |_, entry| {
             if let Some(ObjectType::Blob) = entry.kind() {
                 println!("    {} is blob {}", entry.name().unwrap(), entry.id());
-
-                if entry.name().unwrap() == "README.md" {
-                    println!(
-                        "      Content:\n{}",
-                        ::std::str::from_utf8(
-                            entry
-                                .to_object(&repo)
-                                .unwrap()
-                                .into_blob()
-                                .unwrap()
-                                .content(),
-                        )
-                        .unwrap()
-                    );
-                }
             }
 
             TreeWalkResult::Ok
