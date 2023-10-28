@@ -60,10 +60,16 @@
             inputsFrom = [ kupli-crate ];
             packages = with pkgs; [
               git
+
+              (rust-bin.stable.latest.default.override {
+                extensions = [ "rust-src" ];
+              })
+
               # Both of these used for VSCode.
               nixpkgs-fmt
               nil.packages.${system}.default
             ];
+            RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
           };
 
           checks = {

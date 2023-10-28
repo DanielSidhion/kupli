@@ -1,5 +1,5 @@
 use git2::{ObjectType, Oid, Repository, TreeWalkResult};
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -94,18 +94,38 @@ impl ::std::str::FromStr for Link {
     }
 }
 
-fn read_links(content: &str) -> Vec<Link> {
-    let result: Result<Vec<Link>, String> = content
-        .split('\n')
-        .filter(|s| !s.is_empty())
-        .map(|line| line.parse())
-        .collect();
-    result.unwrap()
+#[derive(Debug)]
+struct Links {
+    previous_commit: Oid,
+    links: Vec<Link>,
 }
 
-fn maybe_read_links<P: AsRef<Path>>(path: P) -> Option<Vec<Link>> {
+fn read_links(content: &str) -> Result<Links, String> {
+    let mut lines = content.split('\n').filter(|s| !s.is_empty());
+
+    let previous_commit = lines
+        .next()
+        .ok_or_else(|| "unable to read links from empty file!")?;
+    let previous_commit = Oid::from_str(&previous_commit).map_err(|err| {
+        format!(
+            "links file starts with a line that isn't a commit id! Error: {}",
+            err
+        )
+    })?;
+
+    let links: Vec<Link> = lines
+        .map(|line| line.parse::<Link>())
+        .collect::<Result<_, _>>()?;
+
+    Ok(Links {
+        previous_commit,
+        links,
+    })
+}
+
+fn maybe_read_links<P: AsRef<Path>>(path: P) -> Option<Links> {
     match ::std::fs::read_to_string(&path) {
-        Ok(content) => Some(read_links(&content)),
+        Ok(content) => Some(read_links(&content).unwrap()),
         Err(err) => {
             println!(
                 "Encountered an error trying to read links from path {}: {}",
@@ -128,17 +148,20 @@ fn main() {
     let head_tree = repo.head().unwrap().peel_to_tree().unwrap();
     let links_from_head = match head_tree.get_path(&Path::new(".kupli/links")) {
         Ok(entry) => match entry.kind() {
-            Some(ObjectType::Blob) => Some(read_links(
-                ::std::str::from_utf8(
-                    entry
-                        .to_object(&repo)
-                        .unwrap()
-                        .into_blob()
-                        .unwrap()
-                        .content(),
+            Some(ObjectType::Blob) => Some(
+                read_links(
+                    ::std::str::from_utf8(
+                        entry
+                            .to_object(&repo)
+                            .unwrap()
+                            .into_blob()
+                            .unwrap()
+                            .content(),
+                    )
+                    .unwrap(),
                 )
                 .unwrap(),
-            )),
+            ),
             _ => None,
         },
         Err(err) => {
@@ -154,9 +177,16 @@ fn main() {
     println!("Links from HEAD: {:?}", links_from_head);
     println!("Links from workdir: {:?}", links_from_workdir);
 
+    let mut next_commits = HashMap::new();
+
     let mut commit = repo.head().unwrap().peel_to_commit().unwrap();
+    let mut next_commit_id = None;
 
     loop {
+        if let Some(cm) = next_commit_id {
+            next_commits.insert(commit.id(), cm);
+        }
+
         println!("Commit {}\n  {:?}", commit.id(), commit.message());
 
         let tree = commit.tree().unwrap();
@@ -173,6 +203,78 @@ fn main() {
             println!("End of log!");
             break;
         }
+
+        next_commit_id = Some(commit.id());
         commit = commit.parent(0).unwrap();
+    }
+
+    let commit = repo
+        .find_commit(links_from_workdir.as_ref().unwrap().previous_commit)
+        .unwrap();
+    let commit = repo.find_commit(next_commits[&commit.id()]).unwrap();
+    let commit_tree = commit.tree().unwrap();
+
+    for link in links_from_workdir.as_ref().unwrap().links.iter() {
+        match link.1 {
+            Object::Path(_) => (),
+            Object::Fragment { blob_oid, .. } => {
+                let blob_entry = commit_tree.get_id(blob_oid).unwrap();
+                let blob_name = blob_entry.name().unwrap();
+
+                let mut next_commit_with_change =
+                    repo.find_commit(next_commits[&commit.id()]).unwrap();
+                let (next_commit_with_change, next_blob_id) = loop {
+                    let blob_id_on_next_commit = next_commit_with_change
+                        .tree()
+                        .unwrap()
+                        .get_name(blob_name)
+                        .unwrap()
+                        .id();
+
+                    if blob_id_on_next_commit != blob_oid {
+                        break (next_commit_with_change, blob_id_on_next_commit);
+                    } else {
+                        next_commit_with_change = repo
+                            .find_commit(next_commits[&next_commit_with_change.id()])
+                            .unwrap();
+                    }
+                };
+
+                println!(
+                    "Link {} has blob {} that changes on commit {} and becomes blob {}!",
+                    link.0,
+                    blob_oid,
+                    next_commit_with_change.id(),
+                    next_blob_id
+                );
+
+                let old_blob = repo.find_blob(blob_oid).unwrap();
+                let new_blob = repo.find_blob(next_blob_id).unwrap();
+                repo.diff_blobs(
+                    Some(&old_blob),
+                    Some(blob_name),
+                    Some(&new_blob),
+                    Some(blob_name),
+                    None,
+                    Some(&mut |delta, num| {
+                        println!("We're inside file_cb, num is {}", num);
+                        true
+                    }),
+                    Some(&mut |delta, bin| {
+                        println!("We're inside binary_cb!");
+                        true
+                    }),
+                    Some(&mut |delta, hunk| {
+                        println!("We're inside hunk_cb!");
+                        true
+                    }),
+                    Some(&mut |delta, hunk, line| {
+                        println!("We're inside line_cb!");
+                        true
+                    }),
+                )
+                .unwrap();
+            }
+        }
     }
 }
